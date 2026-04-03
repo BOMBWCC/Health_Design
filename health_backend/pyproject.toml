@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "health-backend"
+version = "0.1.0"
+description = "Personal Health Data Hub API"
+authors = ["Admin <admin@example.com>"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.110.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+sqlalchemy = "^2.0.27"
+psycopg2-binary = "^2.9.9"
+pydantic = "^2.6.1"
+pydantic-settings = "^2.1.0"
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+python-multipart = "^0.0.9"
+python-dotenv = "^1.0.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
