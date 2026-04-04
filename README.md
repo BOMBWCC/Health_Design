@@ -112,10 +112,16 @@ docker-compose exec api python3 -m app.db.init_db
 - **URL**: `POST /api/v1/tasks/trigger`
 - **Auth**: 需 `task:trigger` 权限
 
-## 扩展指南
-请参考 `memory-bank/` 目录下的文档了解详细的元数据驱动逻辑。
-
-## 自动化测试
-```bash
-docker-compose exec api poetry run pytest -s
+### 5. 项目结构 (Project Structure)
+```
+/Health_Dseign
+├── health_backend/
+│   ├── app/
+│   │   ├── api/v1/         # 接口层 (落实 Scopes 校验)
+│   │   ├── db/             # 数据库层 (ODS 管理与元数据驱动)
+│   │   ├── tasks/          # 聚合引擎 (插件化策略)
+│   │   └── core/           # 核心配置与安全 (Advisory Lock)
+│   ├── migrations/         # Alembic 迁移脚本 (Baseline)
+│   └── tests/              # 全量自动化测试
+└── memory-bank/            # 完整的架构设计与进度文档
 ```
