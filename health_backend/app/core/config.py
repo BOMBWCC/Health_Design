@@ -15,8 +15,14 @@ class Settings(BaseSettings):
     INITIAL_ADMIN_PASS: str
     INITIAL_ADMIN_FULLNAME: str = "Admin"
     
-    # 4. ETL 调度配置
-    AGGREGATION_FREQUENCY: str = "DAILY"
+    # 4. ETL 调度与聚合配置
+    # 默认统计粒度: '1d', '12h', '1h'
+    DEFAULT_AGG_WINDOW: str = "1d"
+    # 默认回溯窗口 (单位: 天)
+    DEFAULT_LOOKBACK_DAYS: int = 3
+    # 默认任务执行周期 (单位: 分钟)
+    DEFAULT_EXEC_INTERVAL_MINUTES: int = 1440 # 24小时
+    
     AGGREGATION_START_TIME: str = "2026-04-01T00:00:00Z"
     DISPLAY_TIMEZONE: str = "Asia/Shanghai"
 
