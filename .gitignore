@@ -146,5 +146,11 @@ cython_debug/
 # VS Code
 .vscode/
 
+# Project Specific
+memory-bank/
+health_backend/tests/
+health_raw.md
+ios_shortcuts/
+
 # MacOS
 .DS_Store
