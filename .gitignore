@@ -149,8 +149,7 @@ cython_debug/
 # Project Specific
 memory-bank/
 health_backend/tests/
-health_raw.md
-ios_shortcuts/
+AGENTS.md
 
 # MacOS
 .DS_Store
