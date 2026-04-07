@@ -27,16 +27,16 @@ cp .env.example .env
 
 ### 2. 启动容器
 ```bash
-docker-compose up --build -d
+docker compose up --build -d
 ```
 
 ### 3. 数据库初始化 (必须按顺序执行)
 ```bash
 # A. 执行 Alembic 迁移，建立静态核心表
-docker-compose exec api poetry run alembic upgrade head
+docker compose exec api poetry run alembic upgrade head
 
 # B. 注入种子数据并同步动态 ODS 原始表
-docker-compose exec api python3 -m app.db.init_db
+docker compose exec api python3 -m app.db.init_db
 ```
 
 ## 核心接口说明 (API Reference)
@@ -112,7 +112,20 @@ docker-compose exec api python3 -m app.db.init_db
 - **URL**: `POST /api/v1/tasks/trigger`
 - **Auth**: 需 `task:trigger` 权限
 
-### 5. 项目结构 (Project Structure)
+### 5. 数据维度参考 (Health Metrics Reference)
+用于 `upload` 和 `query` 接口的 `category` 字段参考。
+
+| 维度名称 | `category` 字段值 | 聚合策略 | 默认单位 |
+| :--- | :--- | :--- | :--- |
+| **步数** | `step_count` | `latest` (取最新) | `steps` |
+| **站立时间** | `stand_hours` | `latest` (取最新) | `hr` |
+| **活动能量** | `active_energy` | `latest` (取最新) | `kcal` |
+| **静息心率** | `resting_heart_rate` | `average` (均值) | `count/min` |
+| **步行心率平均值** | `walking_heart_rate` | `average` (均值) | `count/min` |
+| **心率变异性(HRV)** | `hrv` | `average` (均值) | `ms` |
+| **睡眠分析** | `sleep_analysis` | `duration_sum` (时长累加) | `hr` |
+
+### 6. 项目结构 (Project Structure)
 ```
 /Health_Dseign
 ├── health_backend/
