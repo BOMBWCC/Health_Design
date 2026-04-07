@@ -1,7 +1,11 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import asyncio
 import logging
+import os
 
 from app.api.v1 import health, auth, upload, query, tasks
 from app.tasks.aggregate import run_all_users_aggregation
@@ -18,10 +22,8 @@ logger = logging.getLogger(__name__)
 async def simple_scheduler():
     """
     后台无限循环，定期触发全量聚合。
-    注意：这在单实例 VPS 上非常有效。
     """
     logger.info("Simple Scheduler started.")
-    # 给系统预留一些启动时间
     await asyncio.sleep(60) 
     
     while True:
@@ -32,27 +34,19 @@ async def simple_scheduler():
         except Exception as e:
             logger.error(f"Scheduler Error: {e}")
         
-        # 每 12 小时检查一次 (43200秒)
-        # 你也可以根据 settings.AGGREGATION_FREQUENCY 动态调整
         await asyncio.sleep(43200)
 
 # --- 3. 生命周期管理 ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # A. 启动时：初始化数据库 (仅当非测试环境时)
-    # 我们通过简单的尝试连接来判定
     try:
         logger.info("Application starting: Initializing DB...")
         init_db()
     except Exception as e:
         logger.warning(f"DB Initialization skipped or failed: {e}. (This is normal in test environments)")
     
-    # B. 启动后台调度协程
     scheduler_task = asyncio.create_task(simple_scheduler())
-    
     yield
-    
-    # C. 关闭时：取消后台任务
     logger.info("Application shutting down: Cleaning up tasks...")
     scheduler_task.cancel()
 
@@ -64,7 +58,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# --- 5. 注册路由 (v1) ---
+# --- 5. 中间件与静态文件 ---
+# Enable CORS for local development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files (ensure directory exists)
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# --- 6. 注册路由 (v1) ---
 app.include_router(health.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(upload.router, prefix="/api/v1")
@@ -73,6 +82,10 @@ app.include_router(tasks.router, prefix="/api/v1")
 
 @app.get("/")
 async def root():
+    """Serve the frontend index page."""
+    index_path = os.path.join(static_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
     return {
         "message": "Welcome to Health Data Hub API",
         "docs": "/docs",
