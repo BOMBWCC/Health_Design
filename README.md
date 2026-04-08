@@ -11,7 +11,7 @@
   4. **静息心率 (Resting HR)**: 样本日平均。
   5. **步行心率 (Walking HR)**: 样本日平均。
   6. **心率变异性 (HRV)**: 样本日平均。
-  7. **睡眠分析 (Sleep)**: 分类状态筛选（如 Asleep），时长自动累加。
+  7. **睡眠分析 (Sleep)**: 后端保留基于状态筛选（如 Asleep）的累计汇总，同时支持直接查询原始睡眠时间区间。
 - **高性能聚合引擎**：灵活粒度支持、自愈回溯、并发保护。
 - **生产级安全与标准**：全链路 UTC、精细化 Scoped API Key 鉴权、Alembic 治理。
 
@@ -22,7 +22,8 @@
 git clone <repository_url>
 cd Health_Design/health_backend
 cp .env.example .env
-# 编辑 .env 修改数据库密码、密钥等敏感信息
+# 编辑 .env 修改数据库密码、密钥，以及 BOOTSTRAP_USERS_JSON
+# 如需多行维护，也可改用 BOOTSTRAP_USERS_FILE 指向独立 JSON 文件
 ```
 
 ### 2. 启动容器
@@ -49,6 +50,10 @@ docker compose exec api python3 -m app.db.init_db
   - `username`: 用户名 (默认: admin)
   - `password`: 密码 (默认: admin123)
 - **响应**: 返回 `access_token`，后续请求需放在 Header 中：`Authorization: Bearer <token>`。
+- **补充**:
+  - 多用户可直接通过 `.env` 中的 `BOOTSTRAP_USERS_JSON` 配置
+  - 如需多行维护，也支持 `BOOTSTRAP_USERS_FILE` 指向独立 JSON 文件
+  - 启动时会按 `username` 自动同步用户密码和 AI 查询 Key
 
 ### 2. 数据上传 (Data Upload)
 接收批量健康样本数据。支持 iOS 快捷指令或任意第三方客户端。
@@ -112,7 +117,22 @@ docker compose exec api python3 -m app.db.init_db
 - **URL**: `POST /api/v1/tasks/trigger`
 - **Auth**: 需 `task:trigger` 权限
 
-### 5. 数据维度参考 (Health Metrics Reference)
+### 5. 睡眠原始区间查询 (Sleep Raw Interval Query)
+直接从 `raw_sleep_analysis` 返回睡眠时间段，适合前端展示睡眠区间，而不是只看日汇总。
+- **URL**: `GET /api/v1/query/sleep-records`
+- **Auth**: 需 `read:summary` 权限
+- **Query 参数**:
+  - `start_time`: 必填，ISO8601，必须带时区
+  - `end_time`: 必填，ISO8601，必须带时区
+  - `values`: 可选，默认 `Asleep`
+  - `source`: 可选，按来源过滤
+  - `limit`: 可选，默认 `500`
+  - `order`: 可选，`asc` 或 `desc`
+- **查询语义**:
+  - 返回与查询时间窗口存在交集的原始睡眠记录
+  - 默认优先用于展示“观测到的睡眠时间段”
+
+### 6. 数据维度参考 (Health Metrics Reference)
 用于 `upload` 和 `query` 接口的 `category` 字段参考。
 
 | 维度名称 | `category` 字段值 | 聚合策略 | 默认单位 |
@@ -123,9 +143,9 @@ docker compose exec api python3 -m app.db.init_db
 | **静息心率** | `resting_heart_rate` | `average` (均值) | `count/min` |
 | **步行心率平均值** | `walking_heart_rate` | `average` (均值) | `count/min` |
 | **心率变异性(HRV)** | `hrv` | `average` (均值) | `ms` |
-| **睡眠分析** | `sleep_analysis` | `duration_sum` (时长累加) | `hr` |
+| **睡眠分析** | `sleep_analysis` | `duration_sum` (观测到的睡眠时长累加，后端保留) | `hr` |
 
-### 6. 项目结构 (Project Structure)
+### 7. 项目结构 (Project Structure)
 ```
 /Health_Dseign
 ├── health_backend/

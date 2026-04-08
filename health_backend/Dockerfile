@@ -2,8 +2,8 @@
 FROM python:3.10-slim
 
 # 设置环境变量
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 ENV POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false \
     POETRY_CACHE_DIR='/var/cache/pypoetry' \
@@ -23,7 +23,7 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 WORKDIR /app
 
 # 复制依赖文件
-COPY pyproject.toml ./
+COPY pyproject.toml poetry.lock ./
 
 # 安装依赖
 RUN poetry install --no-root --only main

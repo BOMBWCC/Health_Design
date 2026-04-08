@@ -11,6 +11,7 @@ import hashlib
 from app.core.config import settings
 from app.db.database import get_db
 from app.db.models import User, UserAPIKey
+from pydantic import BaseModel, ConfigDict
 
 # --- 1. 基础配置 ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
@@ -47,15 +48,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
-from pydantic import BaseModel
-
 # --- 3. 授权上下文模型 ---
 class AuthContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     user: User
     scopes: List[str] # ['read:summary', 'write:raw', 'task:trigger', 'admin']
-
-    class Config:
-        arbitrary_types_allowed = True
 
 # --- 4. FastAPI 身份验证依赖 ---
 

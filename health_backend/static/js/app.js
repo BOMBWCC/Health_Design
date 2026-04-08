@@ -2,6 +2,7 @@ const state = {
     user: null,
     token: localStorage.getItem('access_token'),
     metrics: [],
+    sleepRecords: [],
     loading: false,
     error: null,
     rangeDays: 7, // 默认 7 天
@@ -46,6 +47,28 @@ const api = {
         return response.json();
     },
 
+    async fetchSleepRecords(days = 7) {
+        const endTime = new Date();
+        const startTime = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+        const params = new URLSearchParams({
+            start_time: startTime.toISOString(),
+            end_time: endTime.toISOString(),
+            order: 'desc'
+        });
+
+        const response = await fetch(`/api/v1/query/sleep-records?${params.toString()}`, {
+            headers: { 'Authorization': `Bearer ${state.token}` }
+        });
+
+        if (response.status === 401) {
+            logout();
+            throw new Error('Session expired');
+        }
+
+        if (!response.ok) throw new Error('Failed to fetch sleep records');
+        return response.json();
+    },
+
     async triggerAggregation() {
         const response = await fetch('/api/v1/tasks/trigger', {
             method: 'POST',
@@ -79,6 +102,7 @@ function logout() {
     state.token = null;
     state.user = null;
     state.metrics = [];
+    state.sleepRecords = [];
     localStorage.removeItem('access_token');
     render();
 }
@@ -92,9 +116,13 @@ async function initDashboard() {
     state.loading = true;
     render();
     try {
-        const data = await api.fetchMetrics(state.rangeDays);
-        state.metrics = data.data;
-        state.user = data.user;
+        const [metricsData, sleepData] = await Promise.all([
+            api.fetchMetrics(state.rangeDays),
+            api.fetchSleepRecords(state.rangeDays)
+        ]);
+        state.metrics = metricsData.data;
+        state.sleepRecords = sleepData.data;
+        state.user = metricsData.user;
     } catch (err) {
         state.error = err.message;
     } finally {
@@ -119,9 +147,11 @@ async function refreshData() {
 
 // --- Chart Logic ---
 function initCharts() {
+    const chartMetrics = state.metrics.filter(m => m.category !== 'sleep_analysis');
+
     // 1. 按 category 归组数据
     const grouped = {};
-    state.metrics.forEach(m => {
+    chartMetrics.forEach(m => {
         if (!grouped[m.category]) grouped[m.category] = { label: m.metadata?.display_name || m.category, unit: m.metadata?.unit || '', points: [] };
         grouped[m.category].points.push({ x: m.record_date, y: m.value });
     });
@@ -172,6 +202,88 @@ function initCharts() {
     });
 }
 
+function formatDateTime(value) {
+    const date = new Date(value);
+    return new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
+}
+
+function formatTime(value) {
+    const date = new Date(value);
+    return new Intl.DateTimeFormat(undefined, {
+        hour: '2-digit',
+        minute: '2-digit'
+    }).format(date);
+}
+
+function formatDuration(hours) {
+    const wholeHours = Math.floor(hours);
+    const minutes = Math.round((hours - wholeHours) * 60);
+
+    if (wholeHours === 0) return `${minutes}m`;
+    if (minutes === 0) return `${wholeHours}h`;
+    return `${wholeHours}h ${minutes}m`;
+}
+
+function buildSleepSummary(records) {
+    if (records.length === 0) {
+        return {
+            totalObservedHours: 0,
+            latestWindow: null
+        };
+    }
+
+    return {
+        totalObservedHours: records.reduce((sum, item) => sum + item.duration_hours, 0),
+        latestWindow: records[0]
+    };
+}
+
+function SleepSection() {
+    const summary = buildSleepSummary(state.sleepRecords);
+    const recordsHtml = state.sleepRecords.length > 0
+        ? state.sleepRecords.slice(0, 12).map(record => `
+            <div class="sleep-record">
+                <div class="sleep-record-main">
+                    <div class="sleep-record-date">${formatDateTime(record.start_time)}</div>
+                    <div class="sleep-record-range">${formatTime(record.start_time)} - ${formatTime(record.end_time)}</div>
+                </div>
+                <div class="sleep-record-side">
+                    <div class="sleep-record-duration">${formatDuration(record.duration_hours)}</div>
+                    <div class="sleep-record-source">${record.source || 'unknown source'}</div>
+                </div>
+            </div>
+        `).join('')
+        : '<div class="sleep-empty">No observed sleep intervals found in this range.</div>';
+
+    return `
+        <section class="card sleep-card fade-in">
+            <div class="sleep-card-header">
+                <div>
+                    <div class="sleep-eyebrow">Sleep Intervals</div>
+                    <h3>Observed sleep records</h3>
+                    <p class="sleep-description">This view shows recorded sleep segments directly from raw data instead of daily sleep totals.</p>
+                </div>
+                <div class="sleep-summary">
+                    <div class="sleep-summary-item">
+                        <span class="sleep-summary-label">Observed total</span>
+                        <strong>${formatDuration(summary.totalObservedHours)}</strong>
+                    </div>
+                    <div class="sleep-summary-item">
+                        <span class="sleep-summary-label">Latest window</span>
+                        <strong>${summary.latestWindow ? `${formatTime(summary.latestWindow.start_time)} - ${formatTime(summary.latestWindow.end_time)}` : 'None'}</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="sleep-list">${recordsHtml}</div>
+        </section>
+    `;
+}
+
 // --- View Components ---
 function LoginView() {
     return `
@@ -196,10 +308,11 @@ function LoginView() {
 }
 
 function DashboardView() {
-    const categories = [...new Set(state.metrics.map(m => m.category))];
+    const visibleMetrics = state.metrics.filter(m => m.category !== 'sleep_analysis');
+    const categories = [...new Set(visibleMetrics.map(m => m.category))];
     const metricsHtml = categories.length > 0 
         ? categories.map(cat => {
-            const latest = state.metrics.filter(m => m.category === cat).sort((a,b) => new Date(b.record_date) - new Date(a.record_date))[0];
+            const latest = visibleMetrics.filter(m => m.category === cat).sort((a,b) => new Date(b.record_date) - new Date(a.record_date))[0];
             return `
                 <div class="card">
                     <div class="metric-header">
@@ -217,7 +330,7 @@ function DashboardView() {
                 </div>
             `;
         }).join('')
-        : '<div class="card" style="grid-column: 1/-1; text-align: center;"><p>No data found for this range.</p></div>';
+        : '<div class="card" style="grid-column: 1/-1; text-align: center;"><p>No trend metrics found for this range.</p></div>';
 
     return `
         <nav class="nav">
@@ -241,6 +354,7 @@ function DashboardView() {
                 <div style="font-size: 13px; color: var(--text-quaternary);">Identity: ${state.user}</div>
             </header>
             <div class="metric-grid fade-in">${metricsHtml}</div>
+            <div class="sleep-section-wrap">${SleepSection()}</div>
         </main>
     `;
 }

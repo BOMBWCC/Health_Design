@@ -1,14 +1,38 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select, and_
-from typing import List, Optional
-from datetime import date
+from sqlalchemy import select, and_, text
+from typing import List, Optional, Literal
+from datetime import date, datetime, timezone
 
 from app.db.database import get_db
-from app.db.models import User, DailyMetricsSummary, MetricDefinition
+from app.db.models import DailyMetricsSummary, MetricDefinition, DataCategoryRegistry
 from app.core.security import get_current_user, check_permissions, AuthContext
+from app.schemas.query import SleepRecordsResponse
 
 router = APIRouter(prefix="/query", tags=["Data Query"])
+
+
+def _ensure_timezone_aware(value: datetime, field_name: str) -> datetime:
+    if value.tzinfo is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_name} must include timezone information.",
+        )
+    return value.astimezone(timezone.utc)
+
+
+def _normalize_db_datetime(value: datetime | str, field_name: str) -> datetime:
+    if isinstance(value, datetime):
+        return _ensure_timezone_aware(value, field_name)
+
+    if isinstance(value, str):
+        normalized = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return _ensure_timezone_aware(normalized, field_name)
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=f"Unexpected datetime value for {field_name}.",
+    )
 
 @router.get("/metrics")
 async def query_metrics(
@@ -85,4 +109,102 @@ async def query_metrics(
         "user": current_user.username,
         "count": len(results),
         "data": results
+    }
+
+
+@router.get("/sleep-records", response_model=SleepRecordsResponse)
+async def query_sleep_records(
+    start_time: datetime = Query(..., description="Query window start time (ISO8601 with timezone)"),
+    end_time: datetime = Query(..., description="Query window end time (ISO8601 with timezone)"),
+    values: Optional[List[str]] = Query(
+        default=["Asleep"],
+        description="Sleep states to include. Defaults to Asleep only.",
+    ),
+    source: Optional[str] = Query(None, description="Optional source filter"),
+    limit: int = Query(500, ge=1, le=2000, description="Maximum number of records to return"),
+    order: Literal["asc", "desc"] = Query("asc", description="Sort by start_time"),
+    db: Session = Depends(get_db),
+    auth: AuthContext = Depends(check_permissions("read:summary")),
+):
+    """
+    查询睡眠原始区间记录。
+    仅查询当前用户的数据，并按时间区间交集返回 ODS 记录。
+    """
+    start_utc = _ensure_timezone_aware(start_time, "start_time")
+    end_utc = _ensure_timezone_aware(end_time, "end_time")
+
+    if start_utc >= end_utc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="start_time must be earlier than end_time.",
+        )
+
+    registry = db.execute(
+        select(DataCategoryRegistry).where(
+            DataCategoryRegistry.category == "sleep_analysis",
+            DataCategoryRegistry.is_active == True,
+        )
+    ).scalar_one_or_none()
+
+    if registry is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Sleep analysis category is not registered.",
+        )
+
+    filters = [
+        "user_id = :user_id",
+        "start_time < :end_time",
+        "end_time > :start_time",
+    ]
+    params = {
+        "user_id": auth.user.id,
+        "start_time": start_utc,
+        "end_time": end_utc,
+        "limit": limit,
+    }
+
+    if values:
+        value_placeholders = []
+        for index, value in enumerate(values):
+            key = f"value_{index}"
+            value_placeholders.append(f":{key}")
+            params[key] = value
+        filters.append(f"value IN ({', '.join(value_placeholders)})")
+
+    if source:
+        filters.append("source = :source")
+        params["source"] = source
+
+    order_clause = "ASC" if order == "asc" else "DESC"
+    query = text(f"""
+        SELECT id, value, unit, start_time, end_time, source
+        FROM {registry.table_name}
+        WHERE {' AND '.join(filters)}
+        ORDER BY start_time {order_clause}, end_time {order_clause}
+        LIMIT :limit
+    """)
+
+    rows = db.execute(query, params).mappings().all()
+
+    records = []
+    for row in rows:
+        start_dt = _normalize_db_datetime(row["start_time"], "start_time")
+        end_dt = _normalize_db_datetime(row["end_time"], "end_time")
+        records.append(
+            {
+                "id": row["id"],
+                "value": row["value"],
+                "unit": row["unit"],
+                "start_time": start_dt,
+                "end_time": end_dt,
+                "duration_hours": round((end_dt - start_dt).total_seconds() / 3600, 3),
+                "source": row["source"],
+            }
+        )
+
+    return {
+        "status": "SUCCESS_000",
+        "count": len(records),
+        "data": records,
     }

@@ -1,0 +1,16 @@
+[
+  {
+    "username": "admin",
+    "password": "admin123",
+    "full_name": "Administrator",
+    "ai_query_api_key": "replace-admin-ai-key",
+    "is_active": true
+  },
+  {
+    "username": "family_a",
+    "password": "replace-family-password",
+    "full_name": "Family A",
+    "ai_query_api_key": "replace-family-ai-key",
+    "is_active": true
+  }
+]
