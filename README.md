@@ -24,6 +24,7 @@ cd Health_Design/health_backend
 cp .env.example .env
 # 编辑 .env 修改数据库密码、密钥，以及 BOOTSTRAP_USERS_JSON
 # 如需多行维护，也可改用 BOOTSTRAP_USERS_FILE 指向独立 JSON 文件
+# 如为公开部署，可将 ENABLE_API_DOCS=false 关闭 Swagger / ReDoc / OpenAPI
 ```
 
 ### 2. 启动容器
@@ -116,6 +117,12 @@ docker compose exec api python3 -m app.db.init_db
 手动运行 ETL 任务（通常用于立即查看刚上传的数据）。
 - **URL**: `POST /api/v1/tasks/trigger`
 - **Auth**: 需 `task:trigger` 权限
+
+### Docs 开关
+- `ENABLE_API_DOCS=true`
+  - 开启 `/docs`、`/redoc`、`/openapi.json`
+- `ENABLE_API_DOCS=false`
+  - 关闭上述 3 个文档相关入口
 
 ### 5. 睡眠原始区间查询 (Sleep Raw Interval Query)
 直接从 `raw_sleep_analysis` 返回睡眠时间段，适合前端展示睡眠区间，而不是只看日汇总。

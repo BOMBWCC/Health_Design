@@ -39,6 +39,16 @@ async def upload_health_data(
     table_name = registry.table_name
     value_type = registry.value_type
     batch_id = str(uuid.uuid4())
+
+    if not payload.data:
+        return UploadResponse(
+            status="success",
+            inserted=0,
+            batch_id=batch_id,
+            table=table_name,
+            skipped=0,
+            message="No data provided",
+        )
     
     # 2. 转换数据并入库
     insert_data = []
@@ -93,7 +103,7 @@ async def upload_health_data(
             inserted=inserted_count,
             batch_id=batch_id,
             table=table_name,
-            skipped=skipped_count # 扩展响应模型以记录跳过的记录
+            skipped=skipped_count, # 扩展响应模型以记录跳过的记录
         )
 
     except Exception as e:

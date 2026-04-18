@@ -8,6 +8,7 @@ import logging
 import os
 
 from app.api.v1 import health, auth, upload, query, tasks
+from app.core.config import settings
 from app.tasks.aggregate import run_all_users_aggregation
 from app.db.init_db import init_db
 
@@ -50,44 +51,54 @@ async def lifespan(app: FastAPI):
     logger.info("Application shutting down: Cleaning up tasks...")
     scheduler_task.cancel()
 
-# --- 4. 初始化应用 ---
-app = FastAPI(
-    title="Personal Health Data Hub",
-    description="Automated collection and analysis hub for Apple Health data.",
-    version="1.0.0",
-    lifespan=lifespan
-)
+def create_app() -> FastAPI:
+    docs_url = "/docs" if settings.ENABLE_API_DOCS else None
+    redoc_url = "/redoc" if settings.ENABLE_API_DOCS else None
+    openapi_url = "/openapi.json" if settings.ENABLE_API_DOCS else None
 
-# --- 5. 中间件与静态文件 ---
-# Enable CORS for local development
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    app = FastAPI(
+        title="Personal Health Data Hub",
+        description="Automated collection and analysis hub for Apple Health data.",
+        version="1.0.0",
+        lifespan=lifespan,
+        docs_url=docs_url,
+        redoc_url=redoc_url,
+        openapi_url=openapi_url,
+    )
 
-# Mount static files (ensure directory exists)
-static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
-if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    # --- 5. 中间件与静态文件 ---
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-# --- 6. 注册路由 (v1) ---
-app.include_router(health.router, prefix="/api/v1")
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(upload.router, prefix="/api/v1")
-app.include_router(query.router, prefix="/api/v1")
-app.include_router(tasks.router, prefix="/api/v1")
+    static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+    if os.path.exists(static_dir):
+        app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
-@app.get("/")
-async def root():
-    """Serve the frontend index page."""
-    index_path = os.path.join(static_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {
-        "message": "Welcome to Health Data Hub API",
-        "docs": "/docs",
-        "version": "v1"
-    }
+    # --- 6. 注册路由 (v1) ---
+    app.include_router(health.router, prefix="/api/v1")
+    app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(upload.router, prefix="/api/v1")
+    app.include_router(query.router, prefix="/api/v1")
+    app.include_router(tasks.router, prefix="/api/v1")
+
+    @app.get("/")
+    async def root():
+        """Serve the frontend index page."""
+        index_path = os.path.join(static_dir, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        return {
+            "message": "Welcome to Health Data Hub API",
+            "docs": docs_url,
+            "version": "v1"
+        }
+
+    return app
+
+
+app = create_app()

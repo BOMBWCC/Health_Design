@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 5256000  # 约 10 年
+    ENABLE_API_DOCS: bool = True
     
     # 3. 初始管理员配置
     INITIAL_ADMIN_USER: str

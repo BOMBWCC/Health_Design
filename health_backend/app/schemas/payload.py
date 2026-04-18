@@ -43,3 +43,4 @@ class UploadResponse(BaseModel):
     batch_id: str
     table: str
     skipped: Optional[int] = 0
+    message: Optional[str] = None
